@@ -183,6 +183,10 @@ p{margin:0}
   .map-attr{right:auto; left:14px; bottom:48px; max-width:60%}
   .map-hint{max-width:60%}
 }
+.hero-tiles{position:absolute; left:50%; top:50%; transform-origin:0 0; opacity:.9}
+.hero-tiles img{position:absolute; width:256px; height:256px}
+.hero-credit{position:absolute; left:var(--gutter); bottom:10px; font-family:var(--mono); font-size:10px; color:rgba(255,255,255,.45)}
+body.lock{overflow:hidden; position:fixed; left:0; right:0; width:100%; overscroll-behavior:none}
 .veil{position:fixed; inset:0; background:rgba(11,33,64,.35); z-index:110; opacity:0; pointer-events:none; transition:opacity .4s}
 .veil.is-on{opacity:1; pointer-events:auto}
 @media (min-width:721px){ .veil{display:none} }
@@ -410,7 +414,7 @@ footer .wrap{display:flex; justify-content:space-between; gap:12px; flex-wrap:wr
 <footer>
   <div class="wrap">
     <span>San Miguel, Buenos Aires · Trabajo de Historia · 6 lugares · 1943 — 1953</span>
-    <span id="footVersion">Mapa vectorial con datos del GIS municipal</span>
+    <span id="footVersion">Mapa vectorial con datos del GIS municipal</span><span id="footBuild"></span>
   </div>
 </footer>
 
@@ -434,6 +438,7 @@ footer .wrap{display:flex; justify-content:space-between; gap:12px; flex-wrap:wr
 window.GOOGLE_MAPS_KEY = "";
 
 const LIVE_TILES = true;
+const BUILD = '3';
 const GEO = {"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Partido de San Miguel","kind":"boundary","source":"msm zonal/4"},"geometry":{"type":"Polygon","coordinates":[[[-58.64757,-34.50273],[-58.644,-34.50287],[-58.60645,-34.53433],[-58.60849,-34.53604],[-58.61315,-34.54412],[-58.61675,-34.54709],[-58.62424,-34.54753],[-58.62917,-34.54963],[-58.63271,-34.55333],[-58.63914,-34.55592],[-58.64573,-34.56281],[-58.65652,-34.56669],[-58.66559,-34.57216],[-58.67037,-34.57644],[-58.67615,-34.57865],[-58.68037,-34.58303],[-58.68364,-34.5882],[-58.6878,-34.5898],[-58.69563,-34.59547],[-58.70301,-34.59781],[-58.71375,-34.60547],[-58.77691,-34.55794],[-58.76817,-34.54994],[-58.76616,-34.55141],[-58.76153,-34.54711],[-58.75638,-34.55083],[-58.75384,-34.54843],[-58.75327,-34.54884],[-58.721,-34.51826],[-58.70142,-34.53268],[-58.69392,-34.52609],[-58.68803,-34.52961],[-58.64757,-34.50273]]]}},{"type":"Feature","properties":{"name":"Campo de Mayo","kind":"campo","source":"msm zonal/3 localidades"},"geometry":{"type":"Polygon","coordinates":[[[-58.6554,-34.56613],[-58.70141,-34.53268],[-58.69392,-34.52608],[-58.68813,-34.52966],[-58.64833,-34.50282],[-58.64406,-34.50282],[-58.60645,-34.53433],[-58.60849,-34.53604],[-58.61315,-34.54412],[-58.61674,-34.54708],[-58.62319,-34.54732],[-58.62871,-34.54936],[-58.63271,-34.55332],[-58.63913,-34.55592],[-58.64573,-34.56281],[-58.6554,-34.56613]]]}},{"type":"Feature","properties":{"name":"Río Reconquista","kind":"water","source":"msm rio_reconquista/2 eje"},"geometry":{"type":"LineString","coordinates":[[-58.60512,-34.53193],[-58.61315,-34.54412],[-58.61674,-34.54708],[-58.62423,-34.54752],[-58.62917,-34.54962],[-58.63271,-34.55332],[-58.63913,-34.55592],[-58.64573,-34.56281],[-58.65651,-34.56669],[-58.66559,-34.57215],[-58.67036,-34.57644],[-58.67615,-34.57865],[-58.68037,-34.58303],[-58.68364,-34.58819],[-58.68779,-34.58979],[-58.69562,-34.59547],[-58.70301,-34.59781],[-58.71651,-34.60721]]}},{"type":"Feature","properties":{"name":"Ferrocarril San Martín","kind":"rail","source":"msm ferrocarril/3 objectid 4"},"geometry":{"type":"LineString","coordinates":[[-58.66695,-34.57301],[-58.69436,-34.55866],[-58.6992,-34.55512],[-58.70857,-34.54703],[-58.71917,-34.54072],[-58.73337,-34.53036]]}},{"type":"Feature","properties":{"name":"Bella Vista","kind":"station","line":"San Martín"},"geometry":{"type":"Point","coordinates":[-58.68426,-34.56401]}},{"type":"Feature","properties":{"name":"Muñiz","kind":"station","line":"San Martín"},"geometry":{"type":"Point","coordinates":[-58.70317,-34.55156]}},{"type":"Feature","properties":{"name":"San Miguel","kind":"station","line":"San Martín"},"geometry":{"type":"Point","coordinates":[-58.71259,-34.54456]}},{"type":"Feature","properties":{"name":"Av. Pte. Perón","kind":"avenue","codcalle":4166},"geometry":{"type":"LineString","coordinates":[[-58.70445,-34.5478],[-58.73115,-34.52827]]}},{"type":"Feature","properties":{"name":"León Gallardo","kind":"avenue","codcalle":14166},"geometry":{"type":"LineString","coordinates":[[-58.69698,-34.55326],[-58.70445,-34.5478]]}},{"type":"Feature","properties":{"name":"Av. Ricardo Balbín","kind":"avenue","codcalle":4141},"geometry":{"type":"MultiLineString","coordinates":[[[-58.70212,-34.53297],[-58.72175,-34.55135]],[[-58.70153,-34.53272],[-58.70212,-34.53297]],[[-58.7019,-34.53245],[-58.70212,-34.53297]]]}},{"type":"Feature","properties":{"name":"Av. Pte. Illia / Ruta 8","kind":"avenue","codcalle":7008},"geometry":{"type":"LineString","coordinates":[[-58.66627,-34.55828],[-58.72099,-34.51827]]}},{"type":"Feature","properties":{"name":"Av. Int. Remigio López","kind":"avenue","codcalle":4250},"geometry":{"type":"LineString","coordinates":[[-58.7226,-34.57874],[-58.76341,-34.54885]]}},{"type":"Feature","properties":{"name":"Av. Primera Junta","kind":"avenue","codcalle":4173},"geometry":{"type":"MultiLineString","coordinates":[[[-58.73545,-34.54408],[-58.76223,-34.56895]],[[-58.7338,-34.54256],[-58.73519,-34.54384]],[[-58.72971,-34.53919],[-58.73351,-34.54277]],[[-58.72785,-34.53679],[-58.73011,-34.5389]],[[-58.72449,-34.53383],[-58.72623,-34.53545]],[[-58.72369,-34.53306],[-58.72453,-34.53313],[-58.72449,-34.53383]],[[-58.72369,-34.53306],[-58.72366,-34.53377],[-58.72449,-34.53383]],[[-58.71686,-34.52669],[-58.72369,-34.53306]],[[-58.71407,-34.52355],[-58.71717,-34.52647]]]}},{"type":"Feature","properties":{"name":"Ruta 202 / Av. J. Lemos","kind":"avenue","codcalle":7202},"geometry":{"type":"LineString","coordinates":[[-58.70153,-34.53272],[-58.69392,-34.52609],[-58.69309,-34.52627],[-58.68903,-34.52963],[-58.68802,-34.52961],[-58.64821,-34.50276]]}},{"type":"Feature","properties":{"name":"Sarmiento","kind":"avenue","codcalle":4168},"geometry":{"type":"MultiLineString","coordinates":[[[-58.69831,-34.55452],[-58.70082,-34.55241]],[[-58.70058,-34.55222],[-58.70259,-34.55037]],[[-58.70527,-34.54857],[-58.72123,-34.53688]],[[-58.72653,-34.53265],[-58.72761,-34.53186]],[[-58.73083,-34.52951],[-58.73175,-34.52884]]]}},{"type":"Feature","properties":{"name":"Av. Maestro Ferreyra","kind":"avenue","codcalle":4256},"geometry":{"type":"LineString","coordinates":[[-58.7255,-34.58142],[-58.76817,-34.54995]]}},{"type":"Feature","properties":{"name":"Int. Arricau","kind":"street","codcalle":14195},"geometry":{"type":"MultiLineString","coordinates":[[[-58.75384,-34.54843],[-58.76977,-34.56327]],[[-58.73115,-34.52827],[-58.75326,-34.54884]]]}},{"type":"Feature","properties":{"name":"Martín García","kind":"street","codcalle":4286},"geometry":{"type":"MultiLineString","coordinates":[[[-58.73508,-34.58947],[-58.74474,-34.58223]],[[-58.74474,-34.58223],[-58.74514,-34.58124]],[[-58.74474,-34.58223],[-58.7769,-34.55794]]]}},{"type":"Feature","properties":{"name":"Plaza D. F. Sarmiento","kind":"plaza","source":"msm catastral/0 objectid 3"},"geometry":{"type":"Polygon","coordinates":[[[-58.71183,-34.54259],[-58.71132,-34.54304],[-58.71195,-34.54351],[-58.71261,-34.54299],[-58.71183,-34.54259]]]}},{"type":"Feature","properties":{"name":"Plaza 17 de Octubre","kind":"plaza","source":"msm catastral/0 objectid 33"},"geometry":{"type":"Polygon","coordinates":[[[-58.74553,-34.5535],[-58.74633,-34.55295],[-58.74584,-34.55246],[-58.74505,-34.553],[-58.74553,-34.5535]]]}},{"type":"Feature","properties":{"name":"Plaza Manuel Belgrano","kind":"plaza","source":"msm catastral/0 objectid 57"},"geometry":{"type":"Polygon","coordinates":[[[-58.74812,-34.57963],[-58.74763,-34.57914],[-58.74684,-34.57979],[-58.74732,-34.58023],[-58.74812,-34.57963]]]}},{"type":"Feature","properties":{"name":"Plaza de las Carretas","kind":"plaza","approx":true,"note":"No existe en la capa de espacios publicos del MSM; trazada a mano entre Leon Gallardo, Conesa y las vias junto a estacion Muñiz"},"geometry":{"type":"Polygon","coordinates":[[[-58.70387,-34.54836],[-58.70223,-34.54956],[-58.703,-34.55184],[-58.7051,-34.55],[-58.70387,-34.54836]]]}}]};
 </script>
 <script>
@@ -949,11 +954,16 @@ function initUI(){
       setTimeout(() => { swap(); scroll.style.transition = 'opacity .35s, transform .35s'; scroll.style.opacity = 1; scroll.style.transform = 'none'; }, 160);
     } else { swap(); scroll.style.opacity = 1; scroll.style.transform = 'none'; }
     panel.classList.add('is-open'); panel.setAttribute('aria-hidden', 'false');
-    if (isMobile()) veil.classList.add('is-on');
+    if (isMobile()) { veil.classList.add('is-on'); lockBody(true); }
     if (!explored.has(L.id)) { explored.add(L.id); markers[i].classList.add('is-seen'); updateCounter(); }
   }
+  let lockY = 0;
+  function lockBody(on){
+    if (on) { if (document.body.classList.contains('lock')) return; lockY = window.scrollY; document.body.style.top = -lockY + 'px'; document.body.classList.add('lock'); }
+    else if (document.body.classList.contains('lock')) { document.body.classList.remove('lock'); document.body.style.top = ''; window.scrollTo({ top: lockY, behavior: 'instant' }); }
+  }
   function closePanel(){
-    panel.classList.remove('is-open'); panel.setAttribute('aria-hidden', 'true'); veil.classList.remove('is-on');
+    panel.classList.remove('is-open'); panel.setAttribute('aria-hidden', 'true'); veil.classList.remove('is-on'); lockBody(false);
     markers.forEach(m => m.classList.remove('is-on')); current = -1;
   }
   $('#panelClose').addEventListener('click', closePanel);
@@ -967,7 +977,7 @@ function initUI(){
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closePanel(); closeLb(); } });
   // gesto: arrastrar hacia abajo cierra el bottom sheet
   let sy = null;
-  panel.addEventListener('touchstart', e => { sy = scroll.scrollTop <= 0 ? e.touches[0].clientY : null; }, { passive: true });
+  panel.addEventListener('touchstart', e => { sy = (scroll.scrollTop <= 0 && (e.target.closest('.panel-grab, .panel-img') || e.target === panel)) ? e.touches[0].clientY : null; }, { passive: true });
   panel.addEventListener('touchmove', e => { if (sy != null && isMobile() && e.touches[0].clientY - sy > 90) { sy = null; closePanel(); } }, { passive: true });
 
   /* ── satélite ── */
@@ -1055,6 +1065,23 @@ function initUI(){
   /* ── portada ── */
   const heroBg = $('#heroBg');
   if (HERO_IMAGE) { heroBg.innerHTML = `<img src="${HERO_IMAGE}" alt="">`; $('#heroNote').remove(); }
+  else if (LIVE_TILES) {
+    // mosaico de imágenes satelitales (Esri) centrado en San Miguel, escalado para cubrir la portada
+    $('#heroNote').remove();
+    const Z = 13, n = Math.pow(2, Z), D = Math.PI / 180;
+    const tx = (lon) => Math.floor((lon + 180) / 360 * n), ty = (lat) => Math.floor((1 - Math.log(Math.tan(lat*D) + 1/Math.cos(lat*D)) / Math.PI) / 2 * n);
+    const x0 = tx(-58.80), x1 = tx(-58.60), y0 = ty(-34.49), y1 = ty(-34.615);
+    const box = document.createElement('div'); box.className = 'hero-tiles';
+    const W = (x1 - x0 + 1) * 256, H = (y1 - y0 + 1) * 256;
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      const im = new Image(); im.alt = ''; im.loading = 'eager'; im.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${Z}/${y}/${x}`;
+      im.style.left = (x - x0) * 256 + 'px'; im.style.top = (y - y0) * 256 + 'px'; box.appendChild(im);
+    }
+    heroBg.appendChild(box);
+    const credit = document.createElement('span'); credit.className = 'hero-credit'; credit.textContent = 'Imagen satelital: Esri, Maxar, Earthstar Geographics'; $('.hero').appendChild(credit);
+    const fitHero = () => { const r = heroBg.getBoundingClientRect(); const s = Math.max(r.width / W, r.height / H) * 1.15; box.style.transform = `translate(${-W*s/2}px, ${-H*s/2}px) scale(${s})`; };
+    new ResizeObserver(fitHero).observe(heroBg); fitHero();
+  }
   else {
     // fondo: el mapa vectorial del partido, dibujado en blanco sobre azul
     const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
@@ -1090,6 +1117,7 @@ function initUI(){
   const secObs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) links.forEach(a => a.classList.toggle('is-active', a.getAttribute('href') === '#' + e.target.id)); }), { rootMargin: '-40% 0px -55% 0px' });
   ['mapa', 'recorrido', 'lugares'].forEach(id => secObs.observe(document.getElementById(id)));
 
+  $('#footBuild').textContent = 'versión ' + (typeof BUILD !== 'undefined' ? BUILD : '1');
   if (window.GOOGLE_MAPS_KEY) $('#footVersion').textContent = 'Mapa y satélite: Google Maps · Datos: GIS municipal';
   else if (LIVE_TILES) $('#footVersion').textContent = 'Mapa: OpenStreetMap · Satélite: Esri · Datos: GIS municipal';
   window.SMUI = { openPlace, closePanel, showSat, explored };
