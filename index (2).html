@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>San Miguel, mapa de la historia</title>
+<meta name="description" content="Recorrido interactivo por seis lugares de San Miguel (Buenos Aires) y su relación con la historia de Perón, 1943–1953.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top">SAN MIGUEL<span>/</span>HISTORIA</a>
+    <div class="nav-links" id="navLinks">
+      <a href="#mapa">Mapa</a>
+      <a href="#lugares">Lugares</a>
+    </div>
+    <div class="counter" id="counter" aria-live="polite"><span class="ring" style="--p:0"></span><span>Explorados: <b id="counterNum">0</b>/6</span></div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="hero-bg" id="heroBg"></div>
+  <div class="hero-veil"></div>
+  <div class="wrap">
+    <div class="hero-note" id="heroNote">Espacio reservado: imagen aérea o satelital real de San Miguel (fondo de portada)</div>
+    <p class="eyebrow"><b>Trabajo de Historia</b> · San Miguel, Buenos Aires · 1943 — 1953</p>
+    <h1>San Miguel: <em>un mapa</em> de la historia</h1>
+    <p class="hero-sub">Seis lugares. Una historia. El territorio también cuenta cómo fue el ascenso de Perón.</p>
+    <div class="hero-actions">
+      <a class="btn btn-light" href="#mapa" id="btnExplorar">Explorar el mapa <span class="arrow">↓</span></a>
+      <div class="hero-meta">
+        <div><b data-count="6">0</b>lugares para explorar</div>
+        <div><b>1943 — 1953</b>década recorrida</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="sec" id="mapa">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <p class="eyebrow"><b>01</b> · El mapa</p>
+        <h2>Recorrer San Miguel, punto por punto</h2>
+      </div>
+      <p>Tocá un marcador para abrir su ficha. Arrastrá para moverte, hacé zoom con la rueda, los botones o pellizcando en el celular.</p>
+    </div>
+    <div class="map-shell rv" id="mapShell">
+      <div class="map-top">
+        <div class="seg" role="group" aria-label="Tipo de vista">
+          <button type="button" id="btnMapa" aria-pressed="true">Mapa</button>
+          <button type="button" id="btnSat" aria-pressed="false">Satélite</button>
+        </div>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="map" id="map" aria-label="Mapa interactivo de San Miguel">
+        <div class="tiles" id="tiles" hidden></div>
+        <svg id="mapSvg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+        <div class="ov" id="ov"></div>
+      </div>
+      <div class="map-hint" id="mapHint">Arrastrá · rueda para zoom · tocá los puntos</div>
+      <div class="map-attr" id="mapAttr">Datos: GIS Municipalidad de San Miguel</div>
+      <div class="map-zoom"><button type="button" id="zin" aria-label="Acercar">+</button><button type="button" id="zout" aria-label="Alejar">−</button></div>
+
+      <aside class="panel" id="panel" aria-hidden="true">
+        <div class="panel-grab"></div>
+        <button type="button" class="panel-close" id="panelClose" aria-label="Cerrar ficha">×</button>
+        <div class="panel-scroll" id="panelScroll"></div>
+      </aside>
+    </div>
+  </div>
+</section>
+<div class="veil" id="veil"></div>
+
+<section class="sec about" id="que-vemos">
+  <div class="wrap">
+    <blockquote class="rv">Los lugares no son solamente <mark>puntos en un mapa</mark>. También guardan parte de la memoria de una sociedad.</blockquote>
+    <div class="about-cols rv">
+      <p>En San Miguel encontramos nombres y espacios que permiten conectar el territorio actual con distintos momentos de la historia argentina.</p>
+      <p>Una plaza, una estación, una guarnición militar y tres calles. Ninguno de estos lugares fue elegido al azar: cada nombre quedó en el mapa por una decisión, y cada decisión tiene fecha.</p>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="lugares">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <div>
+        <p class="eyebrow"><b>02</b> · Los lugares</p>
+        <h2>Seis paradas, en orden</h2>
+      </div>
+    </div>
+    <div class="places" id="places"></div>
+  </div>
+</section>
+
+
+
+<footer>
+  <div class="wrap">
+    <span>San Miguel, Buenos Aires · Trabajo de Historia · 6 lugares · 1943 — 1953</span>
+    <span id="footVersion">Mapa vectorial con datos del GIS municipal</span><span id="footBuild"></span>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status"></div>
+<div class="lb" id="lb" aria-hidden="true">
+  <div class="lb-card">
+    <div class="lb-img" id="lbImg"></div>
+    <div class="lb-body">
+      <h4 id="lbTitle"></h4>
+      <p id="lbLoc"></p>
+      <span class="lb-coords" id="lbCoords"></span>
+      <button type="button" class="btn btn-ghost lb-close" id="lbClose">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Orden importante: config y debug primero, datos, después la app -->
+<script src="config.js"></script>
+<script src="debug.js"></script>
+<script src="geo.js"></script>
+<script>
+// ── datos de los 6 lugares (antes en data.js; ahora adentro de index.html) ──
+/* ══════════════════════════════════════════════════════════════
+   DATOS EDITABLES
+   ─ info: párrafos de la ficha (el primero se usa también como
+     resumen en la tarjeta del recorrido).
+   ─ image: ruta relativa a la foto (mismo nivel que index.html). HERO_IMAGE: ruta o URL de
+     una imagen aérea para el fondo de la portada (vacío = mosaico satelital).
+   ─ imagePos: qué parte de la foto se ve al recortarla (ej. "center 20%").
+   ══════════════════════════════════════════════════════════════ */
+
+const HERO_IMAGE = ""; // imagen aérea/satelital de San Miguel para el fondo de la portada
+
+const TIPOS = {
+  historico: { label: "Lugar histórico", color: "#C4342B" },
+  calle:     { label: "Calle / avenida", color: "#10305A" },
+  transporte:{ label: "Transporte",      color: "#3E8ACB" },
+  espacio:   { label: "Espacio público", color: "#5E8C6F" }
+};
+
+const LUGARES = [
+  {
+    id: "plaza17", num: "01", name: "Plaza 17 de Octubre", type: "espacio",
+    lat: -34.5530, lon: -58.7457,
+    pin: "Centro de la plaza (polígono del GIS municipal).",
+    info: [
+      "El 17 de Octubre se relaciona con la movilización obrera del 17 de octubre de 1945, cuando una gran cantidad de trabajadores se movilizó para pedir la liberación de Juan Domingo Perón, que había sido detenido y trasladado a la isla Martín García. Este hecho fue muy importante porque marcó el crecimiento político de Perón y del movimiento obrero que lo apoyaba.",
+      "La Plaza 17 de Octubre está en San Miguel, en la zona de Mansilla, en el área urbana del partido. La ubicación registrada es Mansilla 2741, San Miguel.",
+      "Es un espacio público de escala barrial, utilizado como plaza y lugar de encuentro. No tiene la función de una avenida principal, sino de espacio verde.",
+      "El nombre recuerda directamente el 17 de octubre de 1945, una fecha fundamental para el peronismo y para la historia política argentina."
+    ],
+    image: "plaza17.jpg"
+  },
+  {
+    id: "tren", num: "02", name: "Ferrocarril San Martín", type: "transporte",
+    lat: -34.54456, lon: -58.71259,
+    pin: "Andenes de la estación San Miguel (GIS municipal, capa Ferrocarril).",
+    info: [
+      "El Ferrocarril San Martín es una línea ferroviaria que atraviesa el partido de San Miguel. Actualmente tiene estaciones en Bella Vista, Muñiz y San Miguel, por lo que forma parte de la vida cotidiana y de la organización territorial de la zona.",
+      "En el partido de San Miguel, el recorrido pasa por las localidades de Bella Vista, Muñiz y San Miguel, conectándolas con otras zonas del Gran Buenos Aires y con la Ciudad de Buenos Aires.",
+      "Es un eje importante de transporte y comunicación. Las estaciones funcionan como puntos de concentración de actividades comerciales, circulación de personas y conexión entre distintas localidades.",
+      "El ferrocarril originalmente se llamaba Buenos Aires al Pacífico. Después de la nacionalización de los ferrocarriles durante el gobierno de Perón, pasó a llamarse Ferrocarril Nacional General San Martín, denominación que comenzó a utilizarse desde 1949. El nombre hacía referencia al general José de San Martín."
+    ],
+    image: "tren.jpg"
+  },
+  {
+    id: "campo", num: "03", name: "Campo de Mayo", type: "historico",
+    lat: -34.5495, lon: -58.6782,
+    pin: "Puerta 4, acceso sobre Av. Pte. Illia (Ruta 8), del lado de San Miguel. El predio completo se dibuja en el mapa.",
+    info: [
+      "Campo de Mayo es una importante guarnición militar ubicada en el partido de San Miguel. Su relación con el capítulo está principalmente en la Revolución del 4 de junio de 1943: allí se reunieron jefes militares y miembros del GOU, y desde la guarnición partieron tropas hacia la Ciudad de Buenos Aires para derrocar al presidente Ramón Castillo.",
+      "Se encuentra en el partido de San Miguel, delimitado aproximadamente por las rutas nacionales 8 y 9, la Ruta Provincial 202 y el Camino de Cintura.",
+      "Es un espacio muy extenso dentro del partido y tiene un carácter principalmente militar, aunque también representa un espacio importante desde el punto de vista histórico, ambiental y patrimonial. Actualmente una parte está destinada al Espacio para la Memoria y a la Reserva Urbana de la Defensa."
+    ],
+    image: "campo.jpg"
+  },
+  {
+    id: "arricau", num: "04", name: "Intendente Arricau", type: "calle",
+    lat: -34.552624, lon: -58.758305, imagePos: "center 42%",
+    pin: "Esquina con Av. Int. Remigio López, en la zona comercial de Santa María (altura 4400). La calle completa se dibuja en el mapa.",
+    info: [
+      "El nombre corresponde a Fernando Arricau, quien fue intendente de la zona de San Miguel/General Sarmiento. La calle lleva el título de Intendente Arricau, por lo que el homenaje está relacionado con su función en la administración municipal.",
+      "La calle Intendente Arricau atraviesa diferentes sectores de San Miguel y también tiene continuidad hacia el límite con José C. Paz. El callejero del Área Metropolitana la registra específicamente dentro de San Miguel.",
+      "Tiene una función importante de conexión entre distintos barrios. Algunos tramos están clasificados dentro de la red de calles de circulación de mayor importancia del partido.",
+      "La denominación Intendente Arricau se debe al reconocimiento de su función como intendente."
+    ],
+    image: "arricau.jpg"
+  },
+  {
+    id: "peron", num: "05", name: "Av. Pte. J. D. Perón", type: "calle",
+    lat: -34.542248, lon: -58.712055, imagePos: "center 18%",
+    pin: "Cruce con Av. Dr. Ricardo Balbín, frente a la Plaza Sarmiento y a una cuadra de la estación. La avenida completa se dibuja en el mapa.",
+    info: [
+      "Juan Domingo Perón fue un militar y político argentino. Fue presidente de la Argentina y tuvo un papel central en la política del país desde mediados de la década de 1940. Su gobierno impulsó políticas relacionadas con los trabajadores, los salarios, la industria y la intervención del Estado en la economía.",
+      "La Avenida Presidente Perón atraviesa sectores importantes de San Miguel y Muñiz, conectando diferentes zonas del partido. Documentación municipal ubica tramos de la avenida entre Sargento Cabral y Pardo, en Muñiz, y también aparecen recorridos de transporte que utilizan la avenida.",
+      "Es una avenida principal y una arteria de circulación importante, utilizada por el transporte público y por el tránsito entre distintos barrios. Por eso tiene una función mucho más importante que una calle residencial secundaria.",
+      "El nombre homenajea a Juan Domingo Perón, debido a su importancia histórica y política. La denominación se relaciona directamente con la fuerte presencia que tuvo el peronismo en la historia política y social de San Miguel y del país."
+    ],
+    image: "peron.jpg"
+  },
+  {
+    id: "martin", num: "06", name: "Martín García", type: "calle",
+    lat: -34.5797, lon: -58.7475,
+    pin: "Frente a la Plaza Manuel Belgrano (Génova, M. García, Belgrano y H. Binda), el tramo más arbolado de la calle. La calle completa se dibuja en el mapa.",
+    info: [
+      "Martín García fue un militar y marino español cuyo nombre quedó asociado principalmente a la Isla Martín García, ubicada en el Río de la Plata. Para nuestro trabajo, lo importante es que Juan Domingo Perón fue trasladado y detenido allí en octubre de 1945, antes de la movilización del 17 de octubre.",
+      "La calle Martín García se encuentra en distintos sectores del partido de San Miguel, incluyendo la zona de Trujui. La Municipalidad menciona, por ejemplo, obras sobre Martín García desde Pardo hasta la Ruta Provincial 23.",
+      "Tiene una función de conexión entre barrios, especialmente en sectores periféricos del partido. No es una de las principales avenidas centrales, pero sí forma parte de la red vial que comunica diferentes zonas.",
+      "La calle lleva el nombre de Martín García, asociado históricamente a la isla que tuvo un papel importante en la historia argentina. En el caso de nuestro tema, el nombre permite relacionarla con el episodio de 1945: Perón fue enviado allí antes del 17 de Octubre."
+    ],
+    image: "martin.jpg"
+  }
+];
+</script>
+<script src="app.js"></script>
+<script src="google.js"></script>
+</body>
+</html>
