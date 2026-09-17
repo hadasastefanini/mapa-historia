@@ -125,12 +125,12 @@
 <script src="debug.js"></script>
 <script src="geo.js"></script>
 <script>
-// ── datos de los 6 lugares (antes en data.js; ahora adentro de index.html) ──
+// ── datos de los 6 lugares ──
 /* ══════════════════════════════════════════════════════════════
    DATOS EDITABLES
    ─ info: párrafos de la ficha (el primero se usa también como
      resumen en la tarjeta del recorrido).
-   ─ image: ruta relativa a la foto (mismo nivel que index.html). HERO_IMAGE: ruta o URL de
+   ─ image: ruta relativa a la foto (assets/img/...). HERO_IMAGE: ruta o URL de
      una imagen aérea para el fondo de la portada (vacío = mosaico satelital).
    ─ imagePos: qué parte de la foto se ve al recortarla (ej. "center 20%").
    ══════════════════════════════════════════════════════════════ */
@@ -218,7 +218,572 @@ const LUGARES = [
   }
 ];
 </script>
-<script src="app.js"></script>
+<script>
+// ── motor de mapa + interfaz (antes en app.js) ──
+/* ══════════════════════════════════════════════════════════════
+   MOTOR DE MAPA (sin dependencias)
+   Proyección Web Mercator. Las geometrías van en un SVG con
+   viewBox (trazos de ancho fijo); marcadores y etiquetas en HTML.
+   Con LIVE_TILES = true se agrega una capa de tiles debajo.
+   ══════════════════════════════════════════════════════════════ */
+(function(){
+  if (window.GOOGLE_MAPS_KEY) return;    // con Google Maps, el motor propio no se usa
+  const BASE = 12;                       // unidad de mundo = px a zoom 12
+  const WORLD = 256 * Math.pow(2, BASE);
+  const DEG = Math.PI / 180;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const ease = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+
+  function project(lat, lon){
+    const x = (lon + 180) / 360 * WORLD;
+    const s = Math.sin(lat * DEG);
+    const y = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * WORLD;
+    return [x, y];
+  }
+
+  const el = document.getElementById('map');
+  const svg = document.getElementById('mapSvg');
+  const ov = document.getElementById('ov');
+  const tilesEl = document.getElementById('tiles');
+  const hint = document.getElementById('mapHint');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Límites del recorrido (con margen) — no se puede salir de San Miguel
+  const B = { n: -34.49, s: -34.615, w: -58.80, e: -58.595 };
+  const [bw, bn] = project(B.n, B.w), [be, bs] = project(B.s, B.e);
+  const ZMIN = 12.3, ZMAX = LIVE_TILES ? 18 : 16.3;
+
+  const st = { cx: 0, cy: 0, z: 13, w: 1, h: 1 };
+  const overlays = [];   // {el, x, y}
+  let anim = null, mode = 'map';
+
+  /* ── dibujar geometrías ── */
+  const NS = 'http://www.w3.org/2000/svg';
+  const layers = {};
+  ['campo','boundary','water','plaza','rail','avenue','street'].forEach(k => {
+    const g = document.createElementNS(NS, 'g'); g.setAttribute('class', 'ly ly-' + k); svg.appendChild(g); layers[k] = g;
+  });
+  const STYLE = {
+    boundary: 'fill:none;stroke:#10305A;stroke-width:1.3;stroke-dasharray:6 5;opacity:.55',
+    campo: 'fill:rgba(94,140,111,.13);stroke:#5E8C6F;stroke-width:1.2;stroke-dasharray:3 4;opacity:.9',
+    water: 'fill:none;stroke:#8FC0E3;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;opacity:.8',
+    plaza: 'fill:rgba(94,140,111,.55);stroke:#5E8C6F;stroke-width:1',
+    rail: 'fill:none;stroke:#3E4250;stroke-width:2.2;stroke-dasharray:8 5;stroke-linecap:butt',
+    avenue: 'fill:none;stroke:#10305A;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;opacity:.8',
+    street: 'fill:none;stroke:#3E8ACB;stroke-width:2;stroke-linecap:round;stroke-dasharray:1 5;opacity:.95'
+  };
+  function pathFrom(geom){
+    const ring = r => r.map((c, i) => (i ? 'L' : 'M') + project(c[1], c[0]).map(v => v.toFixed(2)).join(' ')).join('');
+    if (geom.type === 'LineString') return ring(geom.coordinates);
+    if (geom.type === 'MultiLineString') return geom.coordinates.map(ring).join('');
+    if (geom.type === 'Polygon') return geom.coordinates.map(r => ring(r) + 'Z').join('');
+    return '';
+  }
+  GEO.features.forEach(f => {
+    const k = f.properties.kind; if (!layers[k]) return;
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', pathFrom(f.geometry));
+    p.setAttribute('style', STYLE[k]);
+    p.setAttribute('vector-effect', 'non-scaling-stroke');
+    p.dataset.name = f.properties.name;
+    layers[k].appendChild(p);
+  });
+  // rail: doble trazo (fondo claro + rayas)
+  Array.from(layers.rail.children).forEach(p => {
+    const bg = p.cloneNode(); bg.setAttribute('style', 'fill:none;stroke:#F5F1E8;stroke-width:4'); layers.rail.insertBefore(bg, p);
+  });
+
+  /* ── etiquetas ── */
+  const LABELS = [
+    { t: 'Campo de Mayo', lat: -34.532, lon: -58.648, cls: 'lbl-campo', minz: 12 },
+    { t: 'Río Reconquista', lat: -34.598, lon: -58.66, cls: 'lbl-water', minz: 13 },
+    { t: 'FC San Martín', lat: -34.5375, lon: -58.7245, cls: 'lbl-rail', minz: 13.6 },
+    { t: 'Av. Pte. Perón', lat: -34.5345, lon: -58.7205, cls: '', minz: 14.2 },
+    { t: 'Ruta 8 · Av. Illia', lat: -34.5295, lon: -58.7055, cls: '', minz: 13.6 },
+    { t: 'Ruta 202 · Av. Lemos', lat: -34.515, lon: -58.672, cls: '', minz: 13.8 },
+    { t: 'Int. Arricau', lat: -34.541, lon: -58.745, cls: '', minz: 14.2 },
+    { t: 'Martín García', lat: -34.5665, lon: -58.7635, cls: '', minz: 14.2 },
+    { t: 'Av. Primera Junta', lat: -34.5505, lon: -58.741, cls: '', minz: 15 },
+    { t: 'Est. San Miguel', lat: -34.5465, lon: -58.7126, cls: 'lbl-st', minz: 14.6 },
+    { t: 'Est. Muñiz', lat: -34.5535, lon: -58.7032, cls: 'lbl-st', minz: 14.6 },
+    { t: 'Est. Bella Vista', lat: -34.566, lon: -58.6843, cls: 'lbl-st', minz: 14.6 },
+    { t: 'José C. Paz', lat: -34.5165, lon: -58.76, cls: 'lbl-rail', minz: 12 },
+    { t: 'Moreno', lat: -34.598, lon: -58.775, cls: 'lbl-rail', minz: 12 },
+    { t: 'Bella Vista', lat: -34.578, lon: -58.68, cls: 'lbl-rail', minz: 13.4 },
+    { t: 'Santa María', lat: -34.563, lon: -58.744, cls: 'lbl-rail', minz: 13.4 }
+  ];
+  LABELS.forEach(L => {
+    const d = document.createElement('div'); d.className = 'lbl ' + L.cls; d.textContent = L.t;
+    const [x, y] = project(L.lat, L.lon); ov.appendChild(d); overlays.push({ el: d, x, y, minz: L.minz });
+  });
+
+  /* ── tiles (solo versión alojada) ── */
+  const tileCache = new Map(), levels = new Map();   // levels: zi -> div
+  // Proveedores en orden de preferencia. Si uno falla (403, caída, bloqueo), se pasa al siguiente solo.
+  const PROVIDERS = {
+    map: [
+      { name: 'OpenStreetMap', attr: '© OpenStreetMap contributors', url: (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png` },
+      { name: 'Esri calles', attr: 'Esri, HERE, Garmin, OpenStreetMap contributors', url: (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${z}/${y}/${x}` }
+      // CARTO quedó afuera: desde 2026 sus tiles gratis traen la marca "API KEY REQUIRED".
+    ],
+    sat: [
+      { name: 'Esri satélite', attr: 'Imágenes: Esri, Maxar, Earthstar Geographics', url: (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}` }
+    ]
+  };
+  const provIdx = { map: 0, sat: 0 }, provFail = { map: 0, sat: 0 };
+  const stats = { pedidos: 0, ok: 0, error: 0, ultimoError: '' };
+  const provider = m => PROVIDERS[m][provIdx[m]];
+  function attribution(){
+    const p = provider(mode);
+    document.getElementById('mapAttr').textContent = (LIVE_TILES ? p.attr + ' · ' : '') + 'Datos: GIS Municipalidad de San Miguel';
+  }
+  function tileFailed(img){
+    stats.error++; stats.ultimoError = img.src;
+    window.__dbg && __dbg('tile ERROR ' + img.src);
+    if (img.dataset.prov !== String(provIdx[mode]) || img.dataset.mode !== mode) return;   // error de un proveedor ya descartado
+    if (++provFail[mode] < 3) return;
+    if (provIdx[mode] < PROVIDERS[mode].length - 1) {
+      provIdx[mode]++; provFail[mode] = 0;
+      window.__dbg && __dbg('cambio de proveedor (' + mode + ') → ' + provider(mode).name);
+      tileCache.forEach((im, key) => { if (key.startsWith(mode + '/')) { im.remove(); tileCache.delete(key); } });
+      attribution(); drawTiles();
+    } else {
+      document.getElementById('mapAttr').textContent = 'No se pudieron cargar los mapas de fondo (' + provider(mode).name + '). Revisá la conexión.';
+    }
+  }
+  function levelDiv(zi){
+    let d = levels.get(zi);
+    if (!d) { d = document.createElement('div'); d.className = 'tl-level'; d.dataset.z = zi; tilesEl.appendChild(d); levels.set(zi, d); }
+    return d;
+  }
+  function drawTiles(){
+    if (!LIVE_TILES) return;
+    const zi = clamp(Math.round(st.z), 10, 18);
+    const s = Math.pow(2, st.z - BASE);            // px de pantalla por unidad de mundo
+    const tw = 256 * Math.pow(2, BASE - zi);        // unidades de mundo por tile
+    // cada nivel se posiciona con su propia escala (así los viejos siguen alineados mientras cargan los nuevos)
+    levels.forEach((d, z) => { d.style.transform = `translate(${st.w/2 - st.cx*s}px, ${st.h/2 - st.cy*s}px) scale(${s * Math.pow(2, BASE - z)})`; });
+    const lv = levelDiv(zi); lv.style.transform = `translate(${st.w/2 - st.cx*s}px, ${st.h/2 - st.cy*s}px) scale(${s * Math.pow(2, BASE - zi)})`;
+    const x0 = Math.floor((st.cx - st.w/2/s) / tw), x1 = Math.floor((st.cx + st.w/2/s) / tw);
+    const y0 = Math.floor((st.cy - st.h/2/s) / tw), y1 = Math.floor((st.cy + st.h/2/s) / tw);
+    const want = new Set(); let pending = 0;
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      const key = `${mode}/${zi}/${x}/${y}`; want.add(key);
+      let img = tileCache.get(key);
+      if (!img) {
+        img = new Image(); img.alt = ''; img.dataset.key = key; img.dataset.mode = mode; img.dataset.prov = String(provIdx[mode]);
+        img.referrerPolicy = 'strict-origin-when-cross-origin';   // algunos servidores exigen Referer
+        img.decoding = 'async';
+        img.style.left = x*256 + 'px'; img.style.top = y*256 + 'px';
+        img.onload = () => { img.classList.add('on'); img.dataset.ok = '1'; stats.ok++; drawTiles(); };
+        img.onerror = () => tileFailed(img);
+        stats.pedidos++;
+        img.src = provider(mode).url(zi, x, y);
+        lv.appendChild(img); tileCache.set(key, img);
+      }
+      img.style.display = '';
+      if (!img.dataset.ok) pending++;
+    }
+    // ocultar lo que no se necesita: en el nivel actual siempre; en otros niveles solo cuando el actual ya cargó
+    tileCache.forEach((img, key) => {
+      if (want.has(key)) return;
+      const sameMode = key.startsWith(mode + '/');
+      const z = +key.split('/')[1];
+      if (!sameMode || z === zi || pending === 0) img.style.display = 'none';
+      if (tileCache.size > 500 && !sameMode) { img.remove(); tileCache.delete(key); }
+    });
+  }
+
+  /* ── render ── */
+  function render(){
+    const s = Math.pow(2, st.z - BASE);
+    const vw = st.w / s, vh = st.h / s;
+    svg.setAttribute('viewBox', `${st.cx - vw/2} ${st.cy - vh/2} ${vw} ${vh}`);
+    overlays.forEach(o => {
+      o.sx = (o.x - st.cx) * s + st.w/2; o.sy = (o.y - st.cy) * s + st.h/2;
+      if (o.minz != null) o.el.classList.toggle('on', st.z >= o.minz);
+    });
+    // marcadores muy cercanos (a poco zoom) se separan un poco para que ambos se puedan tocar
+    const mks = overlays.filter(o => o.mk);
+    for (let k = 0; k < 2; k++) for (let i = 0; i < mks.length; i++) for (let j = i + 1; j < mks.length; j++) {
+      const a = mks[i], b = mks[j]; let dx = b.sx - a.sx, dy = b.sy - a.sy; let d = Math.hypot(dx, dy) || 1;
+      const min = 40; if (d < min) { const push = (min - d) / 2; dx /= d; dy /= d; a.sx -= dx*push; a.sy -= dy*push; b.sx += dx*push; b.sy += dy*push; }
+    }
+    overlays.forEach(o => { o.el.style.transform = `translate(${o.sx.toFixed(1)}px, ${o.sy.toFixed(1)}px) translate(-50%,-50%)`; });
+    drawTiles();
+  }
+  function fit(){
+    const r = el.getBoundingClientRect(); st.w = r.width; st.h = r.height;
+    constrain(); render();
+  }
+  function constrain(){
+    st.z = clamp(st.z, ZMIN, ZMAX);
+    const s = Math.pow(2, st.z - BASE), hw = st.w/2/s, hh = st.h/2/s;
+    const minx = bw + hw, maxx = be - hw, miny = bn + hh, maxy = bs - hh;
+    st.cx = minx > maxx ? (bw + be)/2 : clamp(st.cx, minx, maxx);
+    st.cy = miny > maxy ? (bn + bs)/2 : clamp(st.cy, miny, maxy);
+  }
+  function zoomAt(dz, px, py){
+    const s0 = Math.pow(2, st.z - BASE);
+    const wx = st.cx + (px - st.w/2)/s0, wy = st.cy + (py - st.h/2)/s0;
+    st.z = clamp(st.z + dz, ZMIN, ZMAX);
+    const s1 = Math.pow(2, st.z - BASE);
+    st.cx = wx - (px - st.w/2)/s1; st.cy = wy - (py - st.h/2)/s1;
+    constrain(); render();
+  }
+  function flyTo(lat, lon, z, opt){
+    opt = opt || {};
+    const [tx0, ty0] = project(lat, lon);
+    const tz = clamp(z == null ? st.z : z, ZMIN, ZMAX);
+    const s1 = Math.pow(2, tz - BASE);
+    // corrimiento en px de pantalla (para dejar lugar al panel)
+    const tx = tx0 + (opt.dx || 0)/s1, ty = ty0 + (opt.dy || 0)/s1;
+    const from = { cx: st.cx, cy: st.cy, z: st.z };
+    if (anim) cancelAnimationFrame(anim);
+    if (reduce || opt.instant) { st.cx = tx; st.cy = ty; st.z = tz; constrain(); render(); opt.done && opt.done(); return; }
+    const t0 = performance.now(), dur = opt.dur || 900;
+    const step = now => {
+      const t = ease(clamp((now - t0)/dur, 0, 1));
+      st.cx = from.cx + (tx - from.cx)*t; st.cy = from.cy + (ty - from.cy)*t; st.z = from.z + (tz - from.z)*t;
+      constrain(); render();
+      if (t < 1) anim = requestAnimationFrame(step); else { anim = null; opt.done && opt.done(); }
+    };
+    anim = requestAnimationFrame(step);
+  }
+  function fitPoints(pts, pad, opt){
+    if (!pts.length) return;
+    const P = pts.map(p => project(p.lat, p.lon));
+    const minx = Math.min(...P.map(p => p[0])), maxx = Math.max(...P.map(p => p[0]));
+    const miny = Math.min(...P.map(p => p[1])), maxy = Math.max(...P.map(p => p[1]));
+    const pw = Math.max(maxx - minx, 1), ph = Math.max(maxy - miny, 1);
+    const availW = st.w - 2*pad - (opt && opt.right || 0), availH = st.h - 2*pad;
+    let z = BASE + Math.log2(Math.min(availW / pw, availH / ph));
+    z = clamp(Math.min(z, 15.2), ZMIN, ZMAX);
+    const c = [(minx + maxx)/2, (miny + maxy)/2];
+    // volver a lat/lon para reusar flyTo
+    const lon = c[0] / WORLD * 360 - 180;
+    const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * c[1] / WORLD))) / DEG;
+    flyTo(lat, lon, z, Object.assign({ dx: (opt && opt.right || 0)/2 }, opt));
+  }
+
+  /* ── interacción ── */
+  const ptrs = new Map(); let gest = null;
+  el.addEventListener('pointerdown', e => {
+    if (e.target.closest('.mk')) return;
+    el.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (anim) { cancelAnimationFrame(anim); anim = null; }
+    startGesture(); hint.style.opacity = 0;
+  });
+  function startGesture(){
+    const p = [...ptrs.values()];
+    if (p.length === 1) gest = { type: 'pan', x: p[0].x, y: p[0].y, cx: st.cx, cy: st.cy };
+    else if (p.length >= 2) {
+      const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      const r = el.getBoundingClientRect();
+      const mx = (p[0].x + p[1].x)/2 - r.left, my = (p[0].y + p[1].y)/2 - r.top;
+      const s = Math.pow(2, st.z - BASE);
+      gest = { type: 'pinch', d, z: st.z, wx: st.cx + (mx - st.w/2)/s, wy: st.cy + (my - st.h/2)/s };
+    }
+  }
+  el.addEventListener('pointermove', e => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const p = [...ptrs.values()];
+    if (gest && gest.type === 'pan' && p.length === 1) {
+      const s = Math.pow(2, st.z - BASE);
+      st.cx = gest.cx - (p[0].x - gest.x)/s; st.cy = gest.cy - (p[0].y - gest.y)/s; constrain(); render();
+    } else if (gest && gest.type === 'pinch' && p.length >= 2) {
+      const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      const r = el.getBoundingClientRect();
+      const mx = (p[0].x + p[1].x)/2 - r.left, my = (p[0].y + p[1].y)/2 - r.top;
+      st.z = clamp(gest.z + Math.log2(d / gest.d), ZMIN, ZMAX);
+      const s = Math.pow(2, st.z - BASE);
+      st.cx = gest.wx - (mx - st.w/2)/s; st.cy = gest.wy - (my - st.h/2)/s; constrain(); render();
+    }
+  });
+  const endPtr = e => { ptrs.delete(e.pointerId); if (ptrs.size) startGesture(); else gest = null; };
+  el.addEventListener('pointerup', endPtr); el.addEventListener('pointercancel', endPtr);
+  el.addEventListener('wheel', e => {
+    e.preventDefault(); const r = el.getBoundingClientRect();
+    const dz = clamp(-e.deltaY * (e.deltaMode === 1 ? .05 : .0022), -.6, .6);
+    zoomAt(dz, e.clientX - r.left, e.clientY - r.top); hint.style.opacity = 0;
+  }, { passive: false });
+  el.addEventListener('dblclick', e => { if (e.target.closest('.mk')) return; const r = el.getBoundingClientRect(); zoomAt(1, e.clientX - r.left, e.clientY - r.top); });
+  document.getElementById('zin').addEventListener('click', () => flyTo(null, null, st.z + 1, { keep: true }));
+  document.getElementById('zout').addEventListener('click', () => flyTo(null, null, st.z - 1, { keep: true }));
+  // flyTo con lat/lon nulos = mantener el centro
+  const _fly = flyTo;
+  flyTo = function(lat, lon, z, opt){
+    if (lat == null) { const c = st; const lon2 = c.cx / WORLD * 360 - 180; const lat2 = Math.atan(Math.sinh(Math.PI * (1 - 2 * c.cy / WORLD))) / DEG; return _fly(lat2, lon2, z, Object.assign({ dur: 450 }, opt)); }
+    return _fly(lat, lon, z, opt);
+  };
+  new ResizeObserver(fit).observe(el);
+
+  /* ── modo mapa / satélite ── */
+  function setMode(m){
+    mode = m; el.classList.toggle('is-sat', m === 'sat');
+    document.getElementById('btnMapa').setAttribute('aria-pressed', m === 'map');
+    document.getElementById('btnSat').setAttribute('aria-pressed', m === 'sat');
+    if (LIVE_TILES) { tileCache.forEach(img => img.style.display = 'none'); drawTiles(); }
+    attribution();
+  }
+  if (LIVE_TILES) tilesEl.hidden = false;
+  attribution();
+
+  /* estado inicial: todo el partido a la vista */
+  const [ix, iy] = project(-34.553, -58.69); st.cx = ix; st.cy = iy; st.z = 12.9;
+  fit();
+  fitPoints([{ lat: -34.503, lon: -58.777 }, { lat: -34.606, lon: -58.606 }], 24, { instant: true });
+
+  window.SMMap = { project, flyTo, fitPoints, setMode, tileStats: () => Object.assign({ proveedor: provider(mode).name, modo: mode }, stats), addMarker(m){ overlays.push(m); render(); }, get zoom(){ return st.z; }, get width(){ return st.w; }, render };
+})();
+
+/* ══════════════════════════════════════════════════════════════
+   INTERFAZ
+   ══════════════════════════════════════════════════════════════ */
+function initUI(){
+  const $ = s => document.querySelector(s);
+  const isMobile = () => matchMedia('(max-width: 720px)').matches;
+  const explored = new Set();
+  if (typeof IMAGES !== 'undefined') LUGARES.forEach(L => { if (!L.image && IMAGES[L.id]) L.image = IMAGES[L.id]; });
+  let current = -1;
+
+  /* ── leyenda ── */
+  $('#legend').innerHTML = Object.values(TIPOS).map(t => `<span><i style="background:${t.color}"></i>${t.label}</span>`).join('');
+
+  /* ── marcadores ── */
+  const markers = LUGARES.map((L, i) => {
+    const d = document.createElement('button');
+    d.type = 'button'; d.className = 'mk'; d.style.setProperty('--c', TIPOS[L.type].color);
+    d.setAttribute('aria-label', L.name);
+    d.innerHTML = `<span class="mk-ring"></span><span class="mk-dot">${L.num}</span><span class="mk-tip">${L.name}</span>`;
+    d.addEventListener('click', () => openPlace(i));
+    const [x, y] = SMMap.project(L.lat, L.lon);
+    if (!window.GOOGLE_MAPS_KEY) $('#ov').appendChild(d); SMMap.addMarker({ el: d, x, y, mk: true, place: L });
+    return d;
+  });
+
+  /* ── panel ── */
+  const panel = $('#panel'), scroll = $('#panelScroll'), veil = $('#veil'), mapShell = $('#mapShell');
+  // El velo vive en <body>. Si el panel quedara adentro de #mapShell (que tiene isolation:isolate),
+  // su z-index solo valdría dentro de ese contexto y el velo lo taparía. Por eso en móvil se mueve a <body>.
+  function placePanel(){
+    if (isMobile()) { if (panel.parentNode !== document.body) document.body.appendChild(panel); }
+    else if (panel.parentNode !== mapShell) mapShell.appendChild(panel);
+  }
+  placePanel();
+  let rsT; addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(placePanel, 120); });
+  const ph = (t) => `<div class="ph"><b>${t}</b><span>Espacio reservado para la imagen</span></div>`;
+  const img = (L, alt) => L.image ? `<img src="${L.image}" alt="${alt}" loading="lazy"${L.imagePos ? ` style="object-position:${L.imagePos}"` : ''}>` : ph(L.name);
+
+  function panelHTML(L, i){
+    const T = TIPOS[L.type];
+    return `
+      <div class="panel-img">${img(L, L.name)}</div>
+      <div class="panel-body">
+        <p class="panel-kicker"><i style="background:${T.color}"></i>${L.num} · ${T.label}</p>
+        <h3>${L.name}</h3>
+        <div class="panel-text">${L.info.map(p => `<p>${p}</p>`).join('')}</div>
+        <div class="panel-actions">
+          <button type="button" class="btn btn-navy" data-sat="${i}">${LIVE_TILES ? 'Ver imagen satelital' : (L.image ? 'Ver foto en grande' : 'Ver imagen satelital')}</button>
+          <button type="button" class="btn btn-ghost" data-close>Volver al mapa</button>
+        </div>
+        <div class="panel-nav">
+          <button type="button" data-go="${(i + 5) % 6}">← ${LUGARES[(i + 5) % 6].num}</button>
+          <button type="button" data-go="${(i + 1) % 6}">${LUGARES[(i + 1) % 6].num} · ${LUGARES[(i + 1) % 6].name} →</button>
+        </div>
+      </div>`;
+  }
+
+  function openPlace(i, opts){
+    opts = opts || {};
+    const L = LUGARES[i];
+    markers.forEach((m, j) => m.classList.toggle('is-on', j === i));
+    clearHi();
+    current = i;
+    const right = isMobile() ? 0 : Math.min(420, SMMap.width - 28) + 14;
+    let dy = 0;
+    if (isMobile()) {
+      // 1) el mapa se alinea justo debajo de la barra (salto instantáneo, sin animación)
+      const de = document.documentElement; de.style.scrollBehavior = 'auto';
+      mapShell.scrollIntoView({ block: 'start' });
+      requestAnimationFrame(() => { de.style.scrollBehavior = ''; });
+      // 2) el marcador va al centro de la franja de mapa que queda visible sobre la tarjeta
+      const mr = $('#map').getBoundingClientRect();
+      const sheetTop = innerHeight - panel.offsetHeight;
+      const yTarget = Math.max(44, Math.min(mr.height - 44, (sheetTop - mr.top) / 2));
+      dy = Math.round(mr.height / 2 - yTarget);   // flyTo: el punto aparece en (alto/2 − dy)
+    }
+    SMMap.flyTo(L.lat, L.lon, Math.max(SMMap.zoom, 15), { dx: right / 2, dy, dur: opts.instant ? 0 : 900, instant: opts.instant });
+    // contenido con transición
+    const swap = () => { scroll.innerHTML = panelHTML(L, i); scroll.scrollTop = 0; };
+    if (panel.classList.contains('is-open')) {
+      scroll.style.opacity = 0; scroll.style.transform = 'translateY(8px)';
+      setTimeout(() => { swap(); scroll.style.transition = 'opacity .35s, transform .35s'; scroll.style.opacity = 1; scroll.style.transform = 'none'; }, 160);
+    } else { swap(); scroll.style.opacity = 1; scroll.style.transform = 'none'; }
+    panel.classList.add('is-open'); panel.setAttribute('aria-hidden', 'false');
+    if (isMobile()) { veil.classList.add('is-on'); lockBody(true); }
+    if (!explored.has(L.id)) { explored.add(L.id); markers[i].classList.add('is-seen'); updateCounter(); }
+  }
+  let locked = false, tY = 0;
+  const onTouchStart = e => { tY = e.touches[0].clientY; };
+  const onTouchMove = e => {
+    // iOS ignora overflow:hidden para el scroll táctil, así que el gesto se frena acá.
+    const inScroll = e.target.closest && e.target.closest('#panelScroll');
+    if (!inScroll) { if (e.cancelable) e.preventDefault(); return; }
+    // dentro de la ficha: frenar el gesto justo en los bordes para que no "salte" al fondo
+    const dy = e.touches[0].clientY - tY;
+    const atTop = scroll.scrollTop <= 0 && dy > 0;
+    const atBottom = scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 1 && dy < 0;
+    if ((atTop || atBottom) && e.cancelable) e.preventDefault();
+  };
+  function lockBody(on){
+    if (on === locked) return;
+    locked = on;
+    document.documentElement.classList.toggle('lock', on); document.body.classList.toggle('lock', on);
+    if (on) { document.addEventListener('touchstart', onTouchStart, { passive: true }); document.addEventListener('touchmove', onTouchMove, { passive: false }); }
+    else { document.removeEventListener('touchstart', onTouchStart); document.removeEventListener('touchmove', onTouchMove); }
+    window.__dbg && __dbg('lock ' + (on ? 'ON' : 'OFF') + ' scrollY=' + Math.round(window.scrollY));
+  }
+  function closePanel(){
+    panel.classList.remove('is-open'); panel.setAttribute('aria-hidden', 'true'); veil.classList.remove('is-on'); lockBody(false);
+    markers.forEach(m => m.classList.remove('is-on')); current = -1;
+  }
+  $('#panelClose').addEventListener('click', closePanel);
+  veil.addEventListener('click', closePanel);
+  scroll.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.hasAttribute('data-close')) closePanel();
+    else if (b.dataset.go != null) openPlace(+b.dataset.go);
+    else if (b.dataset.sat != null) showSat(+b.dataset.sat);
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closePanel(); closeLb(); } });
+  // gesto: arrastrar hacia abajo cierra el bottom sheet
+  let sy = null;
+  panel.addEventListener('touchstart', e => { sy = (scroll.scrollTop <= 0 && (e.target.closest('.panel-grab, .panel-img') || e.target === panel)) ? e.touches[0].clientY : null; }, { passive: true });
+  panel.addEventListener('touchmove', e => { if (sy != null && isMobile() && e.touches[0].clientY - sy > 90) { sy = null; closePanel(); } }, { passive: true });
+
+  /* ── satélite ── */
+  function showSat(i){
+    const L = LUGARES[i];
+    if (LIVE_TILES) { SMMap.setMode('sat'); SMMap.flyTo(L.lat, L.lon, 17, { dx: isMobile() ? 0 : 217 }); if (isMobile()) closePanel(); return; }
+    $('#lbImg').innerHTML = L.image ? `<img src="${L.image}" alt="${L.name}">` : ph(L.name);
+    $('#lbTitle').textContent = L.name; $('#lbLoc').textContent = L.pin;
+    $('#lbCoords').textContent = `${L.lat.toFixed(5)}, ${L.lon.toFixed(5)} · San Miguel, Buenos Aires`;
+    $('#lb').classList.add('is-on'); $('#lb').setAttribute('aria-hidden', 'false');
+  }
+  function closeLb(){ $('#lb').classList.remove('is-on'); $('#lb').setAttribute('aria-hidden', 'true'); }
+  $('#lbClose').addEventListener('click', closeLb);
+  $('#lb').addEventListener('click', e => { if (e.target === $('#lb')) closeLb(); });
+  $('#btnMapa').addEventListener('click', () => SMMap.setMode('map'));
+  $('#btnSat').addEventListener('click', () => {
+    if (LIVE_TILES) { SMMap.setMode('sat'); return; }
+    toast('La vista satelital en vivo está en la versión alojada. Acá, cada ficha tiene su imagen satelital.');
+  });
+
+  /* ── contador ── */
+  function updateCounter(){
+    const n = explored.size; $('#counterNum').textContent = n;
+    $('#counter .ring').style.setProperty('--p', n / 6 * 100);
+    if (n === 6) { $('#counter').classList.add('is-done'); setTimeout(() => toast('Completaste el recorrido.', true), 500); }
+  }
+  let toastT;
+  function toast(msg, done){
+    const t = $('#toast'); t.innerHTML = (done ? '<span class="chk">✓</span>' : '') + msg; t.classList.toggle('done', !!done); t.classList.add('is-on');
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('is-on'), done ? 4200 : 3200);
+  }
+
+  /* ── lugares (recorrido) ── */
+  $('#places').innerHTML = LUGARES.map((L, i) => `
+    <article class="place rv" id="lugar-${L.id}">
+      <div class="place-media"><span class="num">${L.num}</span>${img(L, L.name)}</div>
+      <div class="place-body">
+        <p class="eyebrow"><i style="background:${TIPOS[L.type].color}"></i>${TIPOS[L.type].label}</p>
+        <h3>${L.num} — ${L.name}</h3>
+        <p>${L.info[0]}</p>
+        <p class="loc">${L.pin}</p>
+        <button type="button" class="btn btn-navy" data-view="${i}">Ver en el mapa</button>
+      </div>
+    </article>`).join('');
+  $('#places').addEventListener('click', e => {
+    const b = e.target.closest('[data-view]'); if (!b) return;
+    const i = +b.dataset.view;
+    if (isMobile()) { openPlace(i); return; }
+    $('#mapa').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => openPlace(i), 450);
+  });
+
+  let hiIds = [];
+  function clearHi(){ hiIds = []; markers.forEach(m => m.classList.remove('is-hi')); $('#map').classList.remove('has-hi'); }
+
+  /* ── portada ── */
+  const heroBg = $('#heroBg');
+  if (HERO_IMAGE) { heroBg.innerHTML = `<img src="${HERO_IMAGE}" alt="">`; $('#heroNote').remove(); }
+  else if (LIVE_TILES) {
+    // mosaico de imágenes satelitales (Esri) centrado en San Miguel, escalado para cubrir la portada
+    $('#heroNote').remove();
+    const Z = 13, n = Math.pow(2, Z), D = Math.PI / 180;
+    const tx = (lon) => Math.floor((lon + 180) / 360 * n), ty = (lat) => Math.floor((1 - Math.log(Math.tan(lat*D) + 1/Math.cos(lat*D)) / Math.PI) / 2 * n);
+    const x0 = tx(-58.80), x1 = tx(-58.60), y0 = ty(-34.49), y1 = ty(-34.615);
+    const box = document.createElement('div'); box.className = 'hero-tiles';
+    const W = (x1 - x0 + 1) * 256, H = (y1 - y0 + 1) * 256;
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      const im = new Image(); im.alt = ''; im.loading = 'eager'; im.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${Z}/${y}/${x}`;
+      im.style.left = (x - x0) * 256 + 'px'; im.style.top = (y - y0) * 256 + 'px'; box.appendChild(im);
+    }
+    heroBg.appendChild(box);
+    const credit = document.createElement('span'); credit.className = 'hero-credit'; credit.textContent = 'Imagen satelital: Esri, Maxar, Earthstar Geographics'; $('.hero').appendChild(credit);
+    const fitHero = () => {
+      const r = heroBg.getBoundingClientRect(); const w = r.width || innerWidth, h = r.height || Math.round(innerHeight * .84);
+      if (!w || !h) return;
+      const s = Math.max(w / W, h / H) * 1.15, ts = 256 * s;
+      box.style.width = W*s + 'px'; box.style.height = H*s + 'px'; box.style.marginLeft = -W*s/2 + 'px'; box.style.marginTop = -H*s/2 + 'px';
+      box.querySelectorAll('img').forEach((im, i) => { const x = Math.floor(i / (y1 - y0 + 1)), y = i % (y1 - y0 + 1); im.style.left = x*ts + 'px'; im.style.top = y*ts + 'px'; im.style.width = ts + 1 + 'px'; im.style.height = ts + 1 + 'px'; });
+    };
+    if (window.ResizeObserver) new ResizeObserver(fitHero).observe(heroBg); addEventListener('resize', fitHero); fitHero();
+  }
+  else {
+    // fondo: el mapa vectorial del partido, dibujado en blanco sobre azul
+    const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
+    const W = 256 * 4096, D = Math.PI / 180;
+    const pr = (lat, lon) => { const s = Math.sin(lat*D); return [(lon+180)/360*W, (0.5 - Math.log((1+s)/(1-s))/(4*Math.PI))*W]; };
+    const ring = r => r.map((c, i) => (i ? 'L' : 'M') + pr(c[1], c[0]).map(v => v.toFixed(1)).join(' ')).join('');
+    const HS = { boundary: 'fill:none;stroke:rgba(255,255,255,.35);stroke-width:1;stroke-dasharray:4 4', campo: 'fill:rgba(255,255,255,.05);stroke:rgba(255,255,255,.3);stroke-width:1;stroke-dasharray:3 4', water: 'fill:none;stroke:rgba(111,174,221,.6);stroke-width:3', rail: 'fill:none;stroke:rgba(255,255,255,.55);stroke-width:1.4;stroke-dasharray:6 4', avenue: 'fill:none;stroke:rgba(255,255,255,.55);stroke-width:1.4', street: 'fill:none;stroke:rgba(111,174,221,.7);stroke-width:1.2', plaza: 'fill:rgba(111,174,221,.6);stroke:none' };
+    GEO.features.forEach(f => {
+      if (!HS[f.properties.kind]) return;
+      const g = f.geometry, p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', g.type === 'LineString' ? ring(g.coordinates) : g.type === 'MultiLineString' ? g.coordinates.map(ring).join('') : g.coordinates.map(r => ring(r) + 'Z').join(''));
+      p.setAttribute('style', HS[f.properties.kind]); p.setAttribute('vector-effect', 'non-scaling-stroke'); svg.appendChild(p);
+    });
+    const [x, y] = pr(-34.55, -58.71);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+    svg.setAttribute('viewBox', `${x - 330} ${y - 190} 660 380`);
+    heroBg.appendChild(svg);
+  }
+
+  /* ── revelar al hacer scroll ── */
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.rv').forEach(n => { const r = n.getBoundingClientRect(); if (r.top > innerHeight) n.classList.add('pre'); io.observe(n); });
+
+  /* ── números que suben ── */
+  document.querySelectorAll('[data-count]').forEach(n => {
+    const to = +n.dataset.count; const t0 = performance.now();
+    const step = now => { const t = Math.min(1, (now - t0)/900); n.textContent = Math.round(to * (1 - Math.pow(1 - t, 3))); if (t < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+
+  /* ── nav activa ── */
+  const links = [...document.querySelectorAll('#navLinks a')];
+  const secObs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) links.forEach(a => a.classList.toggle('is-active', a.getAttribute('href') === '#' + e.target.id)); }), { rootMargin: '-40% 0px -55% 0px' });
+  ['mapa', 'lugares'].forEach(id => secObs.observe(document.getElementById(id)));
+
+  $('#footBuild').textContent = 'versión ' + (typeof BUILD !== 'undefined' ? BUILD : '1');
+  if (window.GOOGLE_MAPS_KEY) $('#footVersion').textContent = 'Mapa y satélite: Google Maps · Datos: GIS municipal';
+  else if (LIVE_TILES) $('#footVersion').textContent = 'Mapa: OpenStreetMap · Satélite: Esri · Datos: GIS municipal';
+  window.SMUI = { openPlace, closePanel, showSat, explored };
+}
+if (!window.GOOGLE_MAPS_KEY) initUI(); else window.__initUI = initUI;
+</script>
 <script src="google.js"></script>
 </body>
 </html>
